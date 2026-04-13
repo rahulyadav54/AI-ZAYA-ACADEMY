@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Navbar } from '@/components/layout/Navbar';
@@ -31,10 +31,18 @@ export function CourseDetails() {
   const { isAuthenticated } = useAuth();
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [expandedModules, setExpandedModules] = useState<string[]>(['module-1']);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
 
   const course = mockCourses.find((c) => c.id === id);
   const lessons = mockLessons.filter((l) => l.courseId === id);
   const quizzes = mockQuizzes.filter((q) => q.courseId === id);
+  const selectedLesson = lessons.find((lesson) => lesson.id === selectedLessonId) ?? lessons[0];
+
+  useEffect(() => {
+    if (lessons.length > 0 && !selectedLessonId) {
+      setSelectedLessonId(lessons[0].id);
+    }
+  }, [lessons, selectedLessonId]);
 
   if (!course) {
     return (
@@ -58,6 +66,14 @@ export function CourseDetails() {
     // Simulate enrollment
     await new Promise((resolve) => setTimeout(resolve, 1500));
     setIsEnrolling(false);
+    navigate(`/student/courses/${course.id}/learn`);
+  };
+
+  const handleStartLearning = () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
     navigate(`/student/courses/${course.id}/learn`);
   };
 
@@ -140,7 +156,7 @@ export function CourseDetails() {
               className="lg:col-span-1"
             >
               <div className="bg-white rounded-2xl p-6 shadow-xl">
-                <div className="aspect-video rounded-xl overflow-hidden mb-4">
+                <div className="relative aspect-video rounded-xl overflow-hidden mb-4">
                   <img
                     src={course.thumbnail}
                     alt={course.title}
@@ -170,6 +186,13 @@ export function CourseDetails() {
                   ) : (
                     'Enroll Now'
                   )}
+                </Button>
+                <Button
+                  onClick={handleStartLearning}
+                  variant="outline"
+                  className="w-full h-12 mt-3 text-lg"
+                >
+                  Preview / Start Learning
                 </Button>
 
                 <p className="text-center text-sm text-gray-500 mt-3">
@@ -225,9 +248,31 @@ export function CourseDetails() {
                     <div className="p-6 border-b">
                       <h3 className="text-xl font-semibold text-gray-900">Course Content</h3>
                       <p className="text-gray-600 mt-1">
-                        {course.lessonsCount} lessons • {course.duration} total length
+                        {course.lessonsCount} lessons - {course.duration} total length
                       </p>
                     </div>
+
+                    {selectedLesson && (
+                      <div className="p-6 border-b bg-gray-50">
+                        <h4 className="font-semibold text-gray-900 mb-3">Selected Preview Lesson</h4>
+                        <div className="aspect-video rounded-lg overflow-hidden bg-black mb-3">
+                          <iframe
+                            src={selectedLesson.videoUrl}
+                            title={selectedLesson.title}
+                            className="w-full h-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-gray-900">{selectedLesson.title}</p>
+                            <p className="text-sm text-gray-600">{selectedLesson.description}</p>
+                          </div>
+                          <span className="text-sm text-gray-500 whitespace-nowrap">{selectedLesson.duration}</span>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="divide-y">
                       {/* Module 1 */}
@@ -249,16 +294,19 @@ export function CourseDetails() {
                         {expandedModules.includes('module-1') && (
                           <div className="divide-y">
                             {lessons.map((lesson, index) => (
-                              <div
+                              <button
                                 key={lesson.id}
-                                className="flex items-center justify-between p-4 pl-12 hover:bg-gray-50 transition-colors"
+                                onClick={() => setSelectedLessonId(lesson.id)}
+                                className={`w-full flex items-center justify-between p-4 pl-12 transition-colors text-left ${
+                                  selectedLesson?.id === lesson.id ? 'bg-violet-50' : 'hover:bg-gray-50'
+                                }`}
                               >
                                 <div className="flex items-center gap-3">
                                   <Play className="h-4 w-4 text-gray-400" />
                                   <span className="text-gray-700">{index + 1}. {lesson.title}</span>
                                 </div>
                                 <span className="text-sm text-gray-500">{lesson.duration}</span>
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
@@ -460,3 +508,4 @@ export function CourseDetails() {
     </div>
   );
 }
+
