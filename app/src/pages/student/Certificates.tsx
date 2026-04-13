@@ -1,10 +1,12 @@
-import { useNavigate } from 'react-router-dom';
+﻿import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
 import { mockCertificates } from '@/data/mockData';
+import { getCertificates } from '@/lib/learningStore';
 import {
   Award,
   Download,
@@ -19,7 +21,40 @@ export function Certificates() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const certificates = mockCertificates.filter((c) => c.userId === user?.id);
+  const certificates = useMemo(() => {
+    if (!user) return [];
+    const stored = getCertificates(user.id).map((c) => ({
+      ...c,
+      issuedAt: new Date(c.issuedAt),
+    }));
+    const legacy = mockCertificates.filter((c) => c.userId === user.id);
+    return [...legacy, ...stored];
+  }, [user]);
+
+  const downloadCertificate = (cert: {
+    certificateId: string;
+    courseName: string;
+    userName: string;
+    issuedAt: Date;
+  }) => {
+    const content = [
+      'AI ZAYA Academy - Certificate of Completion',
+      '',
+      `Certificate ID: ${cert.certificateId}`,
+      `Recipient: ${cert.userName}`,
+      `Course: ${cert.courseName}`,
+      `Issued: ${new Date(cert.issuedAt).toLocaleDateString()}`,
+    ].join('\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${cert.certificateId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <DashboardLayout>
@@ -48,7 +83,7 @@ export function Certificates() {
           <Card>
             <CardContent className="p-6 text-center">
               <CheckCircle className="h-8 w-8 mx-auto text-green-500 mb-2" />
-              <p className="text-2xl font-bold text-gray-900">2</p>
+              <p className="text-2xl font-bold text-gray-900">{certificates.length}</p>
               <p className="text-sm text-gray-500">Courses Completed</p>
             </CardContent>
           </Card>
@@ -102,7 +137,7 @@ export function Certificates() {
                   {/* Actions */}
                   <CardContent className="p-4">
                     <div className="flex gap-2">
-                      <Button className="flex-1" variant="outline">
+                      <Button className="flex-1" variant="outline" onClick={() => downloadCertificate(cert)}>
                         <Download className="mr-2 h-4 w-4" />
                         Download PDF
                       </Button>
@@ -134,3 +169,5 @@ export function Certificates() {
     </DashboardLayout>
   );
 }
+
+

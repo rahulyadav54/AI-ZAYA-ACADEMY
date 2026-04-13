@@ -18,6 +18,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const authRedirectUrl = import.meta.env.VITE_SUPABASE_REDIRECT_URL || window.location.origin;
 
 function toAppUser(authUser: SupabaseUser): User {
   const metadata = authUser.user_metadata ?? {};
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       password,
       options: {
+        emailRedirectTo: authRedirectUrl,
         data: {
           name,
           role,

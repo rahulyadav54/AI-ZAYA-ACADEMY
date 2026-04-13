@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,13 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { mockCourses, mockLessons, mockQuizzes } from '@/data/mockData';
+import { useAuth } from '@/context/AuthContext';
+import {
+  getCourseProgress,
+  hasCertificate,
+  issueCertificate,
+  saveCourseProgress,
+} from '@/lib/learningStore';
 import {
   Play,
   CheckCircle,
@@ -22,12 +29,16 @@ import {
 export function CourseLearning() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [currentLessonId, setCurrentLessonId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('content');
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizAnswers, setQuizAnswers] = useState<number[]>([]);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizResults, setQuizResults] = useState<{ score: number; total: number; passed: boolean } | null>(null);
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
+  const [quizPassed, setQuizPassed] = useState(false);
+  const [certificateReady, setCertificateReady] = useState(false);
 
   const course = mockCourses.find((c) => c.id === id);
   const lessons = mockLessons.filter((l) => l.courseId === id).sort((a, b) => a.order - b.order);
@@ -51,7 +62,11 @@ export function CourseLearning() {
   }
 
   const handleLessonComplete = () => {
-    // Mark lesson as complete and move to next
+    if (!currentLesson) return;
+    setCompletedLessonIds((prev) =>
+      prev.includes(currentLesson.id) ? prev : [...prev, currentLesson.id]
+    );
+
     const currentIndex = lessons.findIndex((l) => l.id === currentLesson?.id);
     if (currentIndex < lessons.length - 1) {
       setCurrentLessonId(lessons[currentIndex + 1].id);
@@ -71,10 +86,41 @@ export function CourseLearning() {
       total: currentQuiz.questions.length,
       passed: correct >= currentQuiz.questions.length * 0.7,
     });
+    if (correct >= currentQuiz.questions.length * 0.7) {
+      setQuizPassed(true);
+    }
     setQuizSubmitted(true);
   };
 
-  const progress = Math.round((lessons.findIndex((l) => l.id === currentLesson?.id) + 1) / lessons.length * 100);
+  const handleGenerateCertificate = () => {
+    if (!user || !course) return;
+    issueCertificate(user, course);
+    setCertificateReady(true);
+    navigate('/student/certificates');
+  };
+
+  useEffect(() => {
+    if (!user || !course) return;
+    const saved = getCourseProgress(user.id, course.id);
+    setCompletedLessonIds(saved.completedLessonIds);
+    setQuizPassed(saved.quizPassed);
+    setCertificateReady(hasCertificate(user.id, course.id));
+  }, [user, course]);
+
+  useEffect(() => {
+    if (!user || !course) return;
+    saveCourseProgress({
+      userId: user.id,
+      courseId: course.id,
+      completedLessonIds,
+      quizPassed,
+    });
+  }, [completedLessonIds, quizPassed, user, course]);
+
+  const progress = useMemo(() => {
+    if (!lessons.length) return 0;
+    return Math.round((completedLessonIds.length / lessons.length) * 100);
+  }, [completedLessonIds, lessons.length]);
 
   return (
     <DashboardLayout>
@@ -272,6 +318,16 @@ export function CourseLearning() {
                               Continue Learning
                             </Button>
                           </div>
+                          {quizResults.passed && progress === 100 && !certificateReady && (
+                            <Button className="mt-4" onClick={handleGenerateCertificate}>
+                              Generate Certificate
+                            </Button>
+                          )}
+                          {quizPassed && progress === 100 && certificateReady && (
+                            <Button className="mt-4" variant="outline" onClick={() => navigate('/student/certificates')}>
+                              View Certificate
+                            </Button>
+                          )}
                         </div>
                       )}
                     </TabsContent>
@@ -296,9 +352,11 @@ export function CourseLearning() {
                 </Button>
                 <Button
                   onClick={handleLessonComplete}
-                  disabled={lessons.findIndex((l) => l.id === currentLesson?.id) === lessons.length - 1}
+                  disabled={!currentLesson || (lessons.findIndex((l) => l.id === currentLesson?.id) === lessons.length - 1 && completedLessonIds.includes(currentLesson.id))}
                 >
-                  Next Lesson
+                  {lessons.findIndex((l) => l.id === currentLesson?.id) === lessons.length - 1
+                    ? (currentLesson && completedLessonIds.includes(currentLesson.id) ? 'Completed' : 'Mark Complete')
+                    : 'Next Lesson'}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
@@ -312,7 +370,7 @@ export function CourseLearning() {
                 <h3 className="font-semibold text-gray-900 mb-4">Course Content</h3>
                 <ScrollArea className="h-[calc(100%-2rem)]">
                   <div className="space-y-2">
-                    {lessons.map((lesson, index) => (
+                    {lessons.map((lesson) => (
                       <button
                         key={lesson.id}
                         onClick={() => setCurrentLessonId(lesson.id)}
@@ -323,7 +381,7 @@ export function CourseLearning() {
                         }`}
                       >
                         <div className="flex-shrink-0 mt-0.5">
-                          {index < lessons.findIndex((l) => l.id === currentLesson?.id) ? (
+                          {completedLessonIds.includes(lesson.id) ? (
                             <CheckCircle className="h-5 w-5 text-green-500" />
                           ) : (
                             <div className="h-5 w-5 rounded-full border-2 border-gray-300 flex items-center justify-center text-xs">
@@ -351,3 +409,5 @@ export function CourseLearning() {
     </DashboardLayout>
   );
 }
+
+
