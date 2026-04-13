@@ -59,14 +59,18 @@ export function Register() {
     setIsLoading(true);
 
     try {
-      const success = await register(name, email, password, role);
-      if (success) {
-        navigate('/student/dashboard');
+      const result = await register(name, email, password, role);
+      if (result.success) {
+        if (result.message) {
+          navigate('/login', { state: { message: result.message } });
+        } else {
+          navigate('/student/dashboard');
+        }
       } else {
-        setError('Registration failed. Please try again.');
+        setError(result.message ?? 'Registration failed. Please try again.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }

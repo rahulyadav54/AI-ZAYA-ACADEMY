@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { GraduationCap, Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +26,7 @@ export function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const successMessage = (location.state as { message?: string } | null)?.message;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,14 +34,14 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
-      if (success) {
+      const result = await login(email, password);
+      if (result.success) {
         navigate('/student/dashboard');
       } else {
-        setError('Invalid email or password. Try demo accounts: student@demo.com, instructor@demo.com, or admin@demo.com');
+        setError(result.message ?? 'Invalid email or password.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +87,11 @@ export function Login() {
               {error && (
                 <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">
                   {error}
+                </div>
+              )}
+              {successMessage && (
+                <div className="p-3 rounded-lg bg-green-50 text-green-700 text-sm">
+                  {successMessage}
                 </div>
               )}
 
@@ -162,15 +169,10 @@ export function Login() {
               </Button>
             </form>
 
-            {/* Demo Accounts */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-              <p className="text-xs font-medium text-gray-500 mb-2">Demo Accounts:</p>
-              <div className="space-y-1 text-xs text-gray-600">
-                <p><span className="font-medium">Student:</span> student@demo.com</p>
-                <p><span className="font-medium">Instructor:</span> instructor@demo.com</p>
-                <p><span className="font-medium">Admin:</span> admin@demo.com</p>
-                <p className="text-gray-400">(Any password works)</p>
-              </div>
+              <p className="text-xs text-gray-600">
+                Sign in with your registered Supabase email and password.
+              </p>
             </div>
           </CardContent>
 

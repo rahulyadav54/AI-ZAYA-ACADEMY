@@ -1,88 +1,146 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { User, UserRole } from '@/types';
-import { mockUsers } from '@/data/mockData';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+
+interface AuthResult {
+  success: boolean;
+  message?: string;
+}
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string, role?: UserRole) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<AuthResult>;
+  register: (name: string, email: string, password: string, role?: UserRole) => Promise<AuthResult>;
   logout: () => void;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function toAppUser(authUser: SupabaseUser): User {
+  const metadata = authUser.user_metadata ?? {};
+  const role = (metadata.role as UserRole) ?? 'student';
+  const safeRole: UserRole = ['student', 'instructor', 'admin'].includes(role) ? role : 'student';
+  const email = authUser.email ?? '';
+  const defaultName = email ? email.split('@')[0] : 'User';
+  const name = metadata.name ?? metadata.full_name ?? defaultName;
+  const avatar =
+    metadata.avatar_url ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email || authUser.id)}`;
+
+  return {
+    id: authUser.id,
+    email,
+    name,
+    role: safeRole,
+    avatar,
+    createdAt: new Date(authUser.created_at),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved user in localStorage
-    const savedUser = localStorage.getItem('zaya_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
+    if (!isSupabaseConfigured || !supabase) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+    const client = supabase;
+
+    let mounted = true;
+
+    const initAuth = async () => {
+      const { data } = await client.auth.getSession();
+      if (!mounted) return;
+      setUser(data.session?.user ? toAppUser(data.session.user) : null);
+      setIsLoading(false);
+    };
+
+    const { data: subscription } = client.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ? toAppUser(session.user) : null);
+      setIsLoading(false);
+    });
+
+    void initAuth();
+
+    return () => {
+      mounted = false;
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
-  const login = async (email: string, _password: string): Promise<boolean> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Mock authentication - in real app, validate against backend
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('zaya_user', JSON.stringify(foundUser));
-      return true;
+  const login = async (email: string, password: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return {
+        success: false,
+        message: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
+      };
     }
-    
-    // For demo, allow any login with demo accounts
-    if (email === 'student@demo.com') {
-      const demoStudent = mockUsers[0];
-      setUser(demoStudent);
-      localStorage.setItem('zaya_user', JSON.stringify(demoStudent));
-      return true;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return { success: false, message: error.message };
     }
-    if (email === 'instructor@demo.com') {
-      const demoInstructor = mockUsers[1];
-      setUser(demoInstructor);
-      localStorage.setItem('zaya_user', JSON.stringify(demoInstructor));
-      return true;
+
+    if (data.user) {
+      setUser(toAppUser(data.user));
     }
-    if (email === 'admin@demo.com') {
-      const demoAdmin = mockUsers[2];
-      setUser(demoAdmin);
-      localStorage.setItem('zaya_user', JSON.stringify(demoAdmin));
-      return true;
-    }
-    
-    return false;
+
+    return { success: true };
   };
 
-  const register = async (name: string, email: string, _password: string, role: UserRole = 'student'): Promise<boolean> => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Create new user
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
+  const register = async (
+    name: string,
+    email: string,
+    password: string,
+    role: UserRole = 'student'
+  ): Promise<AuthResult> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return {
+        success: false,
+        message: 'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
+      };
+    }
+
+    const { data, error } = await supabase.auth.signUp({
       email,
-      role,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
-      createdAt: new Date(),
+      password,
+      options: {
+        data: {
+          name,
+          role,
+          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`,
+        },
+      },
+    });
+
+    if (error) {
+      return { success: false, message: error.message };
+    }
+
+    if (data.user && data.session) {
+      setUser(toAppUser(data.user));
+      return { success: true };
+    }
+
+    return {
+      success: true,
+      message: 'Account created. Check your email to verify your account before signing in.',
     };
-    
-    setUser(newUser);
-    localStorage.setItem('zaya_user', JSON.stringify(newUser));
-    return true;
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('zaya_user');
+    if (supabase) {
+      void supabase.auth.signOut();
+    }
   };
 
   return (
